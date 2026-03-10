@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04   # ← Switch to 22.04 for better compatibility (24.04 often needs more tweaks)
+    runs-on: ubuntu-22.04   # ← Strongly recommend 22.04 — more stable for Buildozer
 
     steps:
     - uses: actions/checkout@v4
@@ -24,33 +24,41 @@ jobs:
         sudo apt update
         sudo apt install -y \
           git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config \
-          zlib1g-dev libncurses6 libncursesw6 libtinfo6 cmake \
-          libffi-dev libssl-dev libltdl-dev libsqlite3-dev libreadline-dev \
-          libbz2-dev liblzma-dev
+          zlib1g-dev libncurses6 libncursesw6 libtinfo6 cmake libffi-dev libssl-dev \
+          libltdl-dev libsqlite3-dev libreadline-dev libbz2-dev liblzma-dev
 
-    - name: Install Python build tools
+    - name: Install Python tools
       run: |
         python -m pip install --upgrade pip setuptools wheel
         pip install --user cython==0.29.37 buildozer
 
-    - name: Accept Android SDK licenses & install build-tools
+    - name: First Buildozer run (downloads SDK)
+      run: buildozer android debug || true   # Allow failure — we just want SDK download
+
+    - name: Fix SDK paths, accept licenses & install missing build-tools
       run: |
-        # Create missing tools/bin path symlink (common fix for sdkmanager location)
+        # Create symlink for old sdkmanager path (Buildozer expects tools/bin/sdkmanager)
         mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin
-        ln -s ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
-              ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager || true
+        if [ -f ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager ]; then
+          ln -sf ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+                 ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+        else
+          echo "cmdline-tools/latest/bin/sdkmanager still missing — check logs"
+          exit 1
+        fi
 
-        # Accept all licenses non-interactively
-        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+        # Auto-accept all licenses
+        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-        # Explicitly install build-tools (use version 30.0.3 or 33.0.0 - common working ones)
+        # Install required components (adjust version if needed, 33.0.0 works well)
         ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
-          "build-tools;33.0.0" "platform-tools" "platforms;android-33"
+          "build-tools;33.0.0" "platform-tools" "platforms;android-33" || true
 
-    - name: Build APK
+    - name: Second Buildozer run (now with fixed SDK)
       run: buildozer -v android debug
 
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: app-debug.apk
