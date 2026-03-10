@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04   # or ubuntu-22.04 if you prefer
+    runs-on: ubuntu-22.04   # ← Switch to 22.04 for better compatibility (24.04 often needs more tweaks)
 
     steps:
     - uses: actions/checkout@v4
@@ -33,10 +33,24 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         pip install --user cython==0.29.37 buildozer
 
+    - name: Accept Android SDK licenses & install build-tools
+      run: |
+        # Create missing tools/bin path symlink (common fix for sdkmanager location)
+        mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin
+        ln -s ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+              ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager || true
+
+        # Accept all licenses non-interactively
+        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+
+        # Explicitly install build-tools (use version 30.0.3 or 33.0.0 - common working ones)
+        ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+          "build-tools;33.0.0" "platform-tools" "platforms;android-33"
+
     - name: Build APK
       run: buildozer -v android debug
 
-    - name: Upload APK
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug.apk
